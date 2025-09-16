@@ -99,38 +99,54 @@ def main():
     end_year = args.end_year if args.end_year else args.start_year
     years = range(args.start_year, end_year + 1)
     paper_numbers_to_check = args.papers.split(',') if args.papers else [str(i) for i in range(1, 10)]
-    seasons = [('s', 'May-June'), ('w', 'Oct-Nov'), ('m', 'March')]
+    
+    seasons = [
+        ('s', 'May-June', 'Jun'), 
+        ('w', 'Oct-Nov', 'Nov'), 
+        ('m', 'March', 'Mar')
+    ]
     
     os.makedirs(OUTPUT_DIR, exist_ok=True)
     
     print(f"Starting download for {syllabus_name_code} from {args.start_year}-{end_year}")
 
     probe_list = []
+    
     for year in years:
-        for season_char, season_folder in seasons:
+        for season_char, season_folder, season_short in seasons:
             year_short = str(year)[-2:]
             
-            if args.file_structure in ['month_year_paper', 'month_year']: base_path_parts = [OUTPUT_DIR, syllabus_name_code, season_folder, str(year)]
-            else: base_path_parts = [OUTPUT_DIR, syllabus_name_code, str(year), season_folder]
+            remote_path_segment = ""
+            if year >= 2018:
+                remote_path_segment = f"{link_path}/{year}-{season_folder}"
+            else:
+                remote_path_segment = f"{link_path}/{year}/{year} {season_short}"
+            
+            if args.file_structure in ['month_year_paper', 'month_year']:
+                base_path_parts = [OUTPUT_DIR, syllabus_name_code, season_folder, str(year)]
+            else:
+                base_path_parts = [OUTPUT_DIR, syllabus_name_code, str(year), season_folder]
 
             if args.gt:
                 filename = f"{args.syllabus}_{season_char}{year_short}_gt.pdf"
-                url = f"{BASE_URL}{link_path}/{year}-{season_folder}/{filename}"
+                url = f"{BASE_URL}{remote_path_segment}/{filename}"
                 save_path = os.path.join(*base_path_parts, filename)
                 probe_list.append((url, save_path))
 
             for paper in paper_numbers_to_check:
                 path_parts = list(base_path_parts)
-                if 'paper' in args.file_structure: path_parts.append(f"Paper {paper}")
+                if 'paper' in args.file_structure:
+                    path_parts.append(f"Paper {paper}")
+                
                 for variant_num in range(1, 10):
                     qp_filename = f"{args.syllabus}_{season_char}{year_short}_qp_{paper}{variant_num}.pdf"
-                    qp_url = f"{BASE_URL}{link_path}/{year}-{season_folder}/{qp_filename}"
+                    qp_url = f"{BASE_URL}{remote_path_segment}/{qp_filename}"
                     qp_save_path = os.path.join(*path_parts, qp_filename)
                     probe_list.append((qp_url, qp_save_path))
                     
                     if args.ms:
                         ms_filename = f"{args.syllabus}_{season_char}{year_short}_ms_{paper}{variant_num}.pdf"
-                        ms_url = f"{BASE_URL}{link_path}/{year}-{season_folder}/{ms_filename}"
+                        ms_url = f"{BASE_URL}{remote_path_segment}/{ms_filename}"
                         ms_save_path = os.path.join(*path_parts, ms_filename)
                         probe_list.append((ms_url, ms_save_path))
 
