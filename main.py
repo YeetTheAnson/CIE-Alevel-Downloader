@@ -2,6 +2,7 @@ import argparse
 import os
 import sys
 import csv
+import concurrent.futures
 from urllib.parse import urljoin
 import requests
 from tqdm import tqdm
@@ -31,21 +32,33 @@ def load_syllabus_map(filename):
             syllabus_map[code.strip()] = path.strip()
     return syllabus_map
 
-def download_if_exists(url, save_path):
+def probe_worker(url, save_path, headers):
+    if os.path.exists(save_path):
+        return None
+    
     try:
-        head_response = requests.head(url, headers=HEADERS, timeout=5, allow_redirects=True)
-        if head_response.status_code == 200:
-            os.makedirs(os.path.dirname(save_path), exist_ok=True)
-            
-            response = requests.get(url, stream=True, headers=HEADERS, timeout=30)
-            response.raise_for_status()
-            
-            with open(save_path, 'wb') as f:
-                for data in response.iter_content(chunk_size=1024):
-                    f.write(data)
-            return True
-        return False
+        response = requests.head(url, headers=headers, timeout=10, allow_redirects=True)
+        if response.status_code == 200:
+            return (url, save_path)
     except requests.exceptions.RequestException:
+        pass
+    
+    return None
+
+def download_worker(url, save_path, headers):
+    try:
+        os.makedirs(os.path.dirname(save_path), exist_ok=True)
+        
+        response = requests.get(url, stream=True, headers=headers, timeout=60)
+        response.raise_for_status()
+        
+        with open(save_path, 'wb') as f:
+            for data in response.iter_content(chunk_size=8192):
+                f.write(data)
+        return True
+    except requests.exceptions.RequestException:
+        return False
+    except Exception:
         return False
 
 def main():
@@ -54,49 +67,23 @@ def main():
         formatter_class=argparse.RawTextHelpFormatter
     )
     
+    parser.add_argument('-s', '--syllabus', type=str, required=True, help='The 4-digit syllabus code (e.g., 9231).')
+    parser.add_argument('--start_year', type=int, required=True, help='The starting year for the download range (inclusive).')
+    parser.add_argument('--end_year', type=int, help='The ending year for the download range (inclusive). Defaults to start_year.')
+    parser.add_argument('-p', '--papers', type=str, help='Comma-separated list of paper numbers to check (e.g., "1,3"). Defaults to 1-9.')
+    parser.add_argument('--ms', action='store_true', help='Include mark schemes in the download.')
+    parser.add_argument('--gt', action='store_true', help='Include grade thresholds in the download.')
     parser.add_argument(
-        '-s', '--syllabus', 
-        type=str, 
-        required=True,
-        help='The 4-digit syllabus code (e.g., 9231). Must exist in syllabus.csv.'
+        '-fs', '--file_structure', type=str, choices=['month_year_paper', 'year_month_paper', 'month_year', 'year_month'], default='year_month_paper',
+        help="Choose the output directory structure (default: year_month_paper)"
     )
     parser.add_argument(
-        '--start_year', 
-        type=int, 
-        required=True,
-        help='The starting year for the download range (inclusive).'
+        '-j', '--jobs', type=int, default=4,
+        help='Number of parallel downloads to run at once (default: 4).'
     )
     parser.add_argument(
-        '--end_year', 
-        type=int, 
-        help='The ending year for the download range (inclusive). Defaults to start_year if not provided.'
-    )
-    parser.add_argument(
-        '-p', '--papers', 
-        type=str, 
-        help='Comma-separated list of paper numbers to check (e.g., "1,3"). If omitted, checks 1 through 6.'
-    )
-    parser.add_argument(
-        '--ms', 
-        action='store_true', 
-        help='Include mark schemes in the download.'
-    )
-    parser.add_argument(
-        '--gt', 
-        action='store_true', 
-        help='Include grade thresholds in the download.'
-    )
-    parser.add_argument(
-        '-fs', '--file_structure', 
-        type=str, 
-        choices=['month_year_paper', 'year_month_paper', 'month_year', 'year_month'],
-        default='year_month_paper',
-        help="""Choose the output directory structure:
-  - month_year_paper: (e.g., May-June/2024/Paper 1/...)
-  - year_month_paper: (e.g., 2024/May-June/Paper 1/...)
-  - month_year:       (e.g., May-June/2024/...)
-  - year_month:       (e.g., 2024/May-June/...)
-(default: year_month_paper)"""
+        '-pj', '--probe-jobs', type=int, default=8,
+        help='Number of parallel probes to run at once. Increase with caution. (default: 8).'
     )
 
     args = parser.parse_args()
@@ -111,97 +98,78 @@ def main():
     
     end_year = args.end_year if args.end_year else args.start_year
     years = range(args.start_year, end_year + 1)
-    
     paper_numbers_to_check = args.papers.split(',') if args.papers else [str(i) for i in range(1, 10)]
-    variants_to_check = range(1, 10)
-    
-    seasons = [
-        ('s', 'May-June'),
-        ('w', 'Oct-Nov'),
-        ('m', 'March')
-    ]
+    seasons = [('s', 'May-June'), ('w', 'Oct-Nov'), ('m', 'March')]
     
     os.makedirs(OUTPUT_DIR, exist_ok=True)
     
-    files_downloaded = 0
-    
-    print(f"Starting optimized brute-force download for {syllabus_name_code} from {args.start_year}-{end_year}")
-    
-    tasks = []
+    print(f"Starting download for {syllabus_name_code} from {args.start_year}-{end_year}")
+
+    probe_list = []
     for year in years:
         for season_char, season_folder in seasons:
-            tasks.append(('gt', year, season_char, season_folder, '', ''))
-            for paper in paper_numbers_to_check:
-                tasks.append(('probe', year, season_char, season_folder, paper, ''))
-
-    with tqdm(total=len(tasks), unit="checks", desc="Initializing...") as pbar:
-        for task_type, year, season_char, season_folder, paper, variant in tasks:
             year_short = str(year)[-2:]
+            
+            if args.file_structure in ['month_year_paper', 'month_year']: base_path_parts = [OUTPUT_DIR, syllabus_name_code, season_folder, str(year)]
+            else: base_path_parts = [OUTPUT_DIR, syllabus_name_code, str(year), season_folder]
 
-            if task_type == 'gt':
-                pbar.set_description(f"Checking GT for {year} {season_folder}")
-                if args.gt:
-                    filename_gt = f"{args.syllabus}_{season_char}{year_short}_gt.pdf"
-                    url_gt = f"{BASE_URL}{link_path}/{year}-{season_folder}/{filename_gt}"
+            if args.gt:
+                filename = f"{args.syllabus}_{season_char}{year_short}_gt.pdf"
+                url = f"{BASE_URL}{link_path}/{year}-{season_folder}/{filename}"
+                save_path = os.path.join(*base_path_parts, filename)
+                probe_list.append((url, save_path))
+
+            for paper in paper_numbers_to_check:
+                path_parts = list(base_path_parts)
+                if 'paper' in args.file_structure: path_parts.append(f"Paper {paper}")
+                for variant_num in range(1, 10):
+                    qp_filename = f"{args.syllabus}_{season_char}{year_short}_qp_{paper}{variant_num}.pdf"
+                    qp_url = f"{BASE_URL}{link_path}/{year}-{season_folder}/{qp_filename}"
+                    qp_save_path = os.path.join(*path_parts, qp_filename)
+                    probe_list.append((qp_url, qp_save_path))
                     
-                    if args.file_structure in ['month_year_paper', 'month_year']:
-                        path_parts = [OUTPUT_DIR, syllabus_name_code, season_folder, str(year)]
-                    else:
-                        path_parts = [OUTPUT_DIR, syllabus_name_code, str(year), season_folder]
-                    
-                    save_path_gt = os.path.join(*path_parts, filename_gt)
-                    
-                    if not os.path.exists(save_path_gt):
-                        if download_if_exists(url_gt, save_path_gt):
-                            files_downloaded += 1
-                pbar.update(1)
-                continue
-
-            if task_type == 'probe':
-                pbar.set_description(f"Probing Paper {paper} for {year} {season_folder}")
-                probe_filename = f"{args.syllabus}_{season_char}{year_short}_qp_{paper}1.pdf"
-                probe_url = f"{BASE_URL}{link_path}/{year}-{season_folder}/{probe_filename}"
-                
-                probe_exists = requests.head(probe_url, headers=HEADERS, timeout=5, allow_redirects=True).status_code == 200
-
-                if probe_exists:
-                    paper_num_folder = f"Paper {paper}"
-                    if 'paper' in args.file_structure:
-                        if args.file_structure == 'month_year_paper': path_parts = [OUTPUT_DIR, syllabus_name_code, season_folder, str(year), paper_num_folder]
-                        else: path_parts = [OUTPUT_DIR, syllabus_name_code, str(year), season_folder, paper_num_folder]
-                    else:
-                        if args.file_structure == 'month_year': path_parts = [OUTPUT_DIR, syllabus_name_code, season_folder, str(year)]
-                        else: path_parts = [OUTPUT_DIR, syllabus_name_code, str(year), season_folder]
-
-                    save_path = os.path.join(*path_parts, probe_filename)
-                    if not os.path.exists(save_path):
-                        if download_if_exists(probe_url, save_path):
-                            files_downloaded += 1
-                            pbar.set_description(f"Downloaded {probe_filename}")
-
-                    for variant_num in range(2, 10):
-                        filename_qp = f"{args.syllabus}_{season_char}{year_short}_qp_{paper}{variant_num}.pdf"
-                        url_qp = f"{BASE_URL}{link_path}/{year}-{season_folder}/{filename_qp}"
-                        save_path_qp = os.path.join(*path_parts, filename_qp)
-                        if not os.path.exists(save_path_qp):
-                            if download_if_exists(url_qp, save_path_qp):
-                                files_downloaded += 1
-                                pbar.set_description(f"Downloaded {filename_qp}")
-
                     if args.ms:
-                        for variant_num in range(1, 10):
-                            filename_ms = f"{args.syllabus}_{season_char}{year_short}_ms_{paper}{variant_num}.pdf"
-                            url_ms = f"{BASE_URL}{link_path}/{year}-{season_folder}/{filename_ms}"
-                            save_path_ms = os.path.join(*path_parts, filename_ms)
-                            if not os.path.exists(save_path_ms):
-                                if download_if_exists(url_ms, save_path_ms):
-                                    files_downloaded += 1
-                                    pbar.set_description(f"Downloaded {filename_ms}")
-                
+                        ms_filename = f"{args.syllabus}_{season_char}{year_short}_ms_{paper}{variant_num}.pdf"
+                        ms_url = f"{BASE_URL}{link_path}/{year}-{season_folder}/{ms_filename}"
+                        ms_save_path = os.path.join(*path_parts, ms_filename)
+                        probe_list.append((ms_url, ms_save_path))
+
+    print(f"\nPhase 1: Probing {len(probe_list):,} potential files with {args.probe_jobs} parallel workers...")
+    download_queue = []
+    with concurrent.futures.ThreadPoolExecutor(max_workers=args.probe_jobs) as executor:
+        future_to_probe = {executor.submit(probe_worker, url, path, HEADERS): (url, path) for url, path in probe_list}
+        
+        with tqdm(total=len(probe_list), unit="probe", desc="Probing") as pbar:
+            for future in concurrent.futures.as_completed(future_to_probe):
+                result = future.result()
+                if result:
+                    download_queue.append(result)
                 pbar.update(1)
+
+    print(f"\nProbing complete. Found {len(download_queue)} new files to download.")
+    
+    files_downloaded = 0
+    if not download_queue:
+        print("Everything is up to date.")
+    else:
+        print(f"\nPhase 2: Downloading files with {args.jobs} parallel workers...")
+        with concurrent.futures.ThreadPoolExecutor(max_workers=args.jobs) as executor:
+            future_to_url = {executor.submit(download_worker, url, path, HEADERS): url for url, path in download_queue}
+            
+            with tqdm(total=len(download_queue), unit="file", desc="Downloading") as pbar:
+                for future in concurrent.futures.as_completed(future_to_url):
+                    try:
+                        if future.result():
+                            files_downloaded += 1
+                        else:
+                            pbar.write(f'Warning: Failed to download {os.path.basename(future_to_url[future])}')
+                    except Exception as exc:
+                        pbar.write(f'Error: Exception for {os.path.basename(future_to_url[future])}: {exc}')
+                    finally:
+                        pbar.update(1)
 
     print("\n------------------------------------")
-    print("Brute-force process completed.")
+    print("Download process completed.")
     print(f"Successfully downloaded {files_downloaded} new files.")
     print(f"All files are saved in: {os.path.abspath(OUTPUT_DIR)}")
     print("------------------------------------")
