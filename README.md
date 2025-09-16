@@ -31,7 +31,7 @@ Your project folder must look like this:
 
 ```
 my_paper_downloader/
-├── downloader.py          # The Python script
+├── main.py          # The Python script
 └── syllabus.csv           # The mandatory syllabus lookup file
 ```
 
@@ -65,11 +65,11 @@ code,path
 
 ## 5. Usage
 
-Run the script from your terminal within the directory where `downloader.py` and `syllabus.csv` are located.
+Run the script from your terminal within the directory where `main.py` and `syllabus.csv` are located.
 
 The basic command structure is:
 ```bash
-python downloader.py -s <SYLLABUS_CODE> --start_year <YEAR> [OPTIONS]
+python main.py -s <SYLLABUS_CODE> --start_year <YEAR> [OPTIONS]
 ```
 
 ### Command-Line Arguments
@@ -100,7 +100,7 @@ This structure prioritizes the **year**, then the exam session, and finally grou
 
 **Example Command:**
 ```bash
-python downloader.py -s 9709 --start_year 2023 --ms --gt -fs year_month_paper
+python main.py -s 9709 --start_year 2023 --ms --gt -fs year_month_paper
 ```
 
 **Resulting File Tree:**
@@ -128,7 +128,7 @@ This structure prioritizes the exam **session** (e.g., 'May-June') first, then t
 
 **Example Command:**
 ```bash
-python downloader.py -s 9709 --start_year 2023 --ms --gt -fs month_year_paper
+python main.py -s 9709 --start_year 2023 --ms --gt -fs month_year_paper
 ```
 
 **Resulting File Tree:**
@@ -156,7 +156,7 @@ Similar to the default, this sorts by year then session, but it **omits the sepa
 
 **Example Command:**
 ```bash
-python downloader.py -s 9709 --start_year 2023 --ms --gt -fs year_month
+python main.py -s 9709 --start_year 2023 --ms --gt -fs year_month
 ```
 
 **Resulting File Tree:**
@@ -181,7 +181,7 @@ This sorts by session then year, and also **omits the separate 'Paper' folders**
 
 **Example Command:**
 ```bash
-python downloader.py -s 9709 --start_year 2023 --ms --gt -fs month_year
+python main.py -s 9709 --start_year 2023 --ms --gt -fs month_year
 ```
 
 **Resulting File Tree:**
@@ -203,19 +203,19 @@ CIE_OUT/
 #### **Example 1: Basic Download**
 Download all available papers for Further Mathematics (9231) for the year 2023.
 ```bash
-python downloader.py -s 9231 --start_year 2023
+python main.py -s 9231 --start_year 2023
 ```
 
 #### **Example 2: Comprehensive Download over a Range**
 Download Computer Science (9618) papers 1, 2, 3, and 4, including their mark schemes and grade thresholds, for the years 2020 through 2023.
 ```bash
-python downloader.py -s 9618 --start_year 2020 --end_year 2023 -p "1,2,3,4" --ms --gt
+python main.py -s 9618 --start_year 2020 --end_year 2023 -p "1,2,3,4" --ms --gt
 ```
 
 #### **Example 3: Custom File Structure**
 Download Physics (9702) papers for 2022, but organize the folders by session first, then by year.
 ```bash
-python downloader.py -s 9702 --start_year 2022 -fs month_year_paper
+python main.py -s 9702 --start_year 2022 -fs month_year_paper
 ```
 This will create a directory structure like: `CIE_OUT/Physics-9702/May-June/2022/Paper 2/...`
 
@@ -241,7 +241,7 @@ All files are saved in: /path/to/my_paper_downloader/CIE_OUT
 ## 9. Troubleshooting
 
 -   **Error: "Syllabus code 'xxxx' not found in 'syllabus.csv'"**:
-    -   Ensure `syllabus.csv` is in the same directory as `downloader.py`.
+    -   Ensure `syllabus.csv` is in the same directory as `main.py`.
     -   Open `syllabus.csv` and verify that the code you are using is listed in the first column.
     -   Check for typos or extra spaces in the CSV file.
 
