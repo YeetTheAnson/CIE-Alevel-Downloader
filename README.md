@@ -4,16 +4,21 @@
 
 This is a command-line interface (CLI) tool designed to efficiently download Cambridge International A-Level past papers from the website `pastpapers.co`.
 
-Instead of blindly checking for every possible paper, variant, and file type, this script uses a "smart probe" brute-force method. It first checks for the existence of a base paper (e.g., Paper 1, Variant 1). If that paper exists for a given session, it then proceeds to download it and search for other variants and associated mark schemes for that specific paper, significantly reducing unnecessary network requests and speeding up the download process.
+This script employs a high-speed, parallel brute-force method to acquire files. It operates in two distinct phases:
+1.  **Parallel Probing**: The script first generates a comprehensive list of all potential file URLs based on your input (years, papers, etc.). It then uses a large number of parallel workers to rapidly check which of these files actually exist on the server, without downloading them.
+2.  **Parallel Downloading**: Once the list of existing files is confirmed, the script uses a separate pool of parallel workers to download all the found files simultaneously.
+
+This two-phase approach dramatically speeds up the process for large download jobs by minimizing wasted time and maximizing network utilization.
 
 ## 2. Features
 
 -   **Targeted Downloads**: Specify syllabus code, year range, and specific paper numbers.
 -   **Component Selection**: Choose to download question papers (`qp`), mark schemes (`ms`), and grade thresholds (`gt`).
--   **Smart Probing**: Minimizes failed requests by only checking for variants and mark schemes if a base paper is found.
+-   **High-Speed Parallel Operations**: Uses concurrent workers to probe for files and download them, making it significantly faster than sequential methods.
 -   **Flexible File Organization**: Customize the output directory structure to suit your preferences.
--   **Progress Tracking**: A clear progress bar shows the status of the download checks.
--   **Skips Existing Files**: Automatically avoids re-downloading files that are already present.
+-   **Multi-Phase Progress Tracking**: Two separate progress bars clearly show the status of the probing and downloading phases.
+-   **Skips Existing Files**: Automatically avoids re-downloading files that are already present on your disk.
+-   **Customizable Parallelism**: Fine-tune the number of concurrent jobs for both probing and downloading to match your network capacity.
 
 ## 3. Prerequisites
 
@@ -32,7 +37,7 @@ Your project folder must look like this:
 ```
 my_paper_downloader/
 ├── main.py          # The Python script
-└── syllabus.csv           # The mandatory syllabus lookup file
+└── syllabus.csv     # The mandatory syllabus lookup file
 ```
 
 ### The `syllabus.csv` File
@@ -80,9 +85,11 @@ python main.py -s <SYLLABUS_CODE> --start_year <YEAR> [OPTIONS]
 | `--start_year`        | `<year>`            | **Yes**   | The first year in the download range (inclusive). Example: `2022`.                                                                       |
 | `--end_year`          | `<year>`            | No        | The last year in the download range (inclusive). If omitted, it defaults to the `start_year` (i.e., only one year is downloaded).          |
 | `-p`, `--papers`        | `"p1,p2,..."`       | No        | A comma-separated string of paper numbers to download (e.g., `"1,3"`). If omitted, the script will check for papers 1 through 9.           |
-| `--ms`                |                     | No        | A flag to include mark schemes (`ms`) in the download. If omitted, only question papers are downloaded.                                |
+| `--ms`                |                     | No        | A flag to include mark schemes (`ms`) in the download.                                                                                   |
 | `--gt`                |                     | No        | A flag to include grade thresholds (`gt`) in the download.                                                                               |
 | `-fs`, `--file_structure` | `<choice>`          | No        | Defines the output directory structure. See the detailed section below. Default is `year_month_paper`.                                 |
+| `-j`, `--jobs`          | `<num>`             | No        | Number of parallel downloads to run at once. Default is `4`.                                                                             |
+| `-pj`, `--probe-jobs`   | `<num>`             | No        | Number of parallel probes to run at once. Increase with caution. Default is `8`.                                                        |
 
 
 ## 6. The `--file_structure` Argument In-Depth
@@ -206,10 +213,10 @@ Download all available papers for Further Mathematics (9231) for the year 2023.
 python main.py -s 9231 --start_year 2023
 ```
 
-#### **Example 2: Comprehensive Download over a Range**
-Download Computer Science (9618) papers 1, 2, 3, and 4, including their mark schemes and grade thresholds, for the years 2020 through 2023.
+#### **Example 2: Comprehensive High-Speed Download**
+Download Computer Science (9618) papers 1, 2, 3, and 4, including their mark schemes and grade thresholds, for the years 2020 through 2023. Use 16 workers for probing and 8 for downloading.
 ```bash
-python main.py -s 9618 --start_year 2020 --end_year 2023 -p "1,2,3,4" --ms --gt
+python main.py -s 9618 --start_year 2020 --end_year 2023 -p "1,2,3,4" --ms --gt --probe-jobs 16 --jobs 8
 ```
 
 #### **Example 3: Custom File Structure**
@@ -221,18 +228,29 @@ This will create a directory structure like: `CIE_OUT/Physics-9702/May-June/2022
 
 ## 8. Output
 
-When you run the script, you will see a progress bar that updates as it checks each combination of year, session, and paper. The description on the progress bar will tell you what it's currently doing.
+When you run the script, you will see output corresponding to the two main phases of operation.
 
+First, the probing phase will start, with its own progress bar:
 ```
-Initializing...: 100%|██████████| 36/36 [00:00<00:00, 123.45checks/s]
-Downloaded 9709_s23_ms_31.pdf: 100%|██████████| 36/36 [00:15<00:00, 2.33checks/s]
+Starting download for Mathematics-9709 from 2022-2023
+
+Phase 1: Probing 2,160 potential files with 8 parallel workers...
+Probing: 100%|██████████| 2160/2160 [00:15<00:00, 141.45probe/s]
 ```
 
-Once completed, a summary message will be displayed:
+After probing is complete, it will summarize the number of files found and begin the download phase with a second progress bar:
+```
+Probing complete. Found 42 new files to download.
+
+Phase 2: Downloading files with 4 parallel workers...
+Downloading: 100%|██████████| 42/42 [00:08<00:00, 5.15file/s]
+```
+
+Once completed, a final summary message will be displayed:
 
 ```
 ------------------------------------
-Brute-force process completed.
+Download process completed.
 Successfully downloaded 42 new files.
 All files are saved in: /path/to/my_paper_downloader/CIE_OUT
 ------------------------------------
