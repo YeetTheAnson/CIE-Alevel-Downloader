@@ -1,7 +1,3 @@
-Of course. Here is the full documentation for the CIE A-Level Past Paper Downloader script, with a special focus on the required file structure and usage instructions.
-
----
-
 # CIE A-Level Past Paper Downloader
 
 ## 1. Overview
