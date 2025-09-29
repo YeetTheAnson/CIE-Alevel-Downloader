@@ -3,7 +3,6 @@ import os
 import sys
 import csv
 import concurrent.futures
-from urllib.parse import urljoin
 import requests
 from tqdm import tqdm
 
@@ -111,28 +110,42 @@ def main():
     print(f"Starting download for {syllabus_name_code} from {args.start_year}-{end_year}")
 
     probe_list = []
+
+    clean_base_url = BASE_URL.rstrip('/')
+    clean_link_path = link_path.strip('/')
+    base_subject_url = f"{clean_base_url}/{clean_link_path}"
     
     for year in years:
         for season_char, season_folder, season_short in seasons:
             year_short = str(year)[-2:]
             
-            remote_path_segment = ""
-            if year >= 2018:
-                remote_path_segment = f"{link_path}/{year}-{season_folder}"
+            # --- MODIFICATION START ---
+            # Define the base URL path for the current year/season to handle different conventions.
+            if year == 2021 and season_folder == 'Oct-Nov':
+                # Special case for 2021 Oct-Nov which uses a space instead of a hyphen.
+                year_season_url = f"{base_subject_url}/{year} {season_folder}"
+            elif year >= 2018:
+                # Standard for 2018 onwards uses a hyphen.
+                year_season_url = f"{base_subject_url}/{year}-{season_folder}"
             else:
-                remote_path_segment = f"{link_path}/{year}/{year} {season_short}"
+                # Older format has a nested folder structure.
+                year_season_url = f"{base_subject_url}/{year}/{year} {season_short}"
+            # --- MODIFICATION END ---
             
+            # Determine local save directory structure
             if args.file_structure in ['month_year_paper', 'month_year']:
                 base_path_parts = [OUTPUT_DIR, syllabus_name_code, season_folder, str(year)]
             else:
                 base_path_parts = [OUTPUT_DIR, syllabus_name_code, str(year), season_folder]
 
+            # Generate URLs for Grade Thresholds
             if args.gt:
                 filename = f"{args.syllabus}_{season_char}{year_short}_gt.pdf"
-                url = f"{BASE_URL}{remote_path_segment}/{filename}"
+                url = f"{year_season_url}/{filename}" # Use the pre-calculated URL path
                 save_path = os.path.join(*base_path_parts, filename)
                 probe_list.append((url, save_path))
 
+            # Generate URLs for Question Papers and Mark Schemes
             for paper in paper_numbers_to_check:
                 path_parts = list(base_path_parts)
                 if 'paper' in args.file_structure:
@@ -140,13 +153,13 @@ def main():
                 
                 for variant_num in range(1, 10):
                     qp_filename = f"{args.syllabus}_{season_char}{year_short}_qp_{paper}{variant_num}.pdf"
-                    qp_url = f"{BASE_URL}{remote_path_segment}/{qp_filename}"
+                    qp_url = f"{year_season_url}/{qp_filename}" # Use the pre-calculated URL path
                     qp_save_path = os.path.join(*path_parts, qp_filename)
                     probe_list.append((qp_url, qp_save_path))
                     
                     if args.ms:
                         ms_filename = f"{args.syllabus}_{season_char}{year_short}_ms_{paper}{variant_num}.pdf"
-                        ms_url = f"{BASE_URL}{remote_path_segment}/{ms_filename}"
+                        ms_url = f"{year_season_url}/{ms_filename}" # Use the pre-calculated URL path
                         ms_save_path = os.path.join(*path_parts, ms_filename)
                         probe_list.append((ms_url, ms_save_path))
 
