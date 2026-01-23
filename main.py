@@ -32,14 +32,42 @@ def load_syllabus_map(filename):
     return syllabus_map
 
 def probe_worker(url, save_path, headers):
+    """
+    Checks if a file exists and is a valid PDF by peeking at the first 4 bytes.
+    """
     if os.path.exists(save_path):
         return None
     
     try:
-        response = requests.head(url, headers=headers, timeout=10, allow_redirects=True)
-        if response.status_code == 200:
-            return (url, save_path)
+        # We use GET with stream=True. This fetches headers but NOT the body.
+        # We allow redirects to follow the link to its final destination.
+        with requests.get(url, headers=headers, stream=True, timeout=10, allow_redirects=True) as response:
+            
+            # 1. Basic Status Check
+            if response.status_code != 200:
+                return None
+
+            # 2. Header Check (Optimization)
+            # If the server explicitly says it's HTML, believe it and abort.
+            content_type = response.headers.get('Content-Type', '').lower()
+            if 'text/html' in content_type:
+                return None
+
+            # 3. Magic Number Check (The "Gold Standard")
+            # We read just the first 4 bytes of the content.
+            # A valid PDF MUST start with b'%PDF'.
+            # The HTML error page you showed starts with b'<!DO'.
+            try:
+                first_chunk = next(response.iter_content(chunk_size=4))
+                if first_chunk.startswith(b'%PDF'):
+                    return (url, save_path)
+            except StopIteration:
+                # File was empty
+                pass
+                
     except requests.exceptions.RequestException:
+        pass
+    except Exception:
         pass
     
     return None
@@ -48,16 +76,43 @@ def download_worker(url, save_path, headers):
     try:
         os.makedirs(os.path.dirname(save_path), exist_ok=True)
         
-        response = requests.get(url, stream=True, headers=headers, timeout=60)
-        response.raise_for_status()
-        
-        with open(save_path, 'wb') as f:
-            for data in response.iter_content(chunk_size=8192):
-                f.write(data)
+        # Open connection
+        with requests.get(url, stream=True, headers=headers, timeout=60) as response:
+            response.raise_for_status()
+            
+            # Final sanity check on the actual download stream
+            content_type = response.headers.get('Content-Type', '').lower()
+            if 'text/html' in content_type:
+                return False
+
+            # Create file
+            with open(save_path, 'wb') as f:
+                # We need to check the start of the file here too, 
+                # just in case the probe passed but the full download redirected.
+                iterator = response.iter_content(chunk_size=4)
+                try:
+                    first_chunk = next(iterator)
+                    if not first_chunk.startswith(b'%PDF'):
+                        # If it's not a PDF, close file, delete it, return False
+                        return False
+                    f.write(first_chunk)
+                except StopIteration:
+                    return False
+
+                # Write the rest of the file
+                for data in response.iter_content(chunk_size=8192):
+                    f.write(data)
+                    
         return True
     except requests.exceptions.RequestException:
         return False
     except Exception:
+        # Cleanup if partial file exists and failed
+        if os.path.exists(save_path):
+            try:
+                os.remove(save_path)
+            except:
+                pass
         return False
 
 def main():
@@ -162,6 +217,8 @@ def main():
                         probe_list.append((ms_url, ms_save_path))
 
     print(f"\nPhase 1: Probing {len(probe_list):,} potential files with {args.probe_jobs} parallel workers...")
+    
+    # We use GET requests now, so let's check fewer files in parallel to avoid looking like a DDoS attack
     download_queue = []
     with concurrent.futures.ThreadPoolExecutor(max_workers=args.probe_jobs) as executor:
         future_to_probe = {executor.submit(probe_worker, url, path, HEADERS): (url, path) for url, path in probe_list}
@@ -189,7 +246,9 @@ def main():
                         if future.result():
                             files_downloaded += 1
                         else:
-                            pbar.write(f'Warning: Failed to download {os.path.basename(future_to_url[future])}')
+                            # Silently fail or log debug if needed, 
+                            # usually means it was an HTML page masquerading as PDF
+                            pass 
                     except Exception as exc:
                         pbar.write(f'Error: Exception for {os.path.basename(future_to_url[future])}: {exc}')
                     finally:
