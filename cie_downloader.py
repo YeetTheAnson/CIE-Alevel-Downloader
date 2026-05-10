@@ -130,9 +130,9 @@ def run_simultaneous(probe_list, probe_jobs, download_jobs):
                     continue
 
                 if item is _PROBE_DONE:
-                    for f, url in concurrent.futures.as_completed(
-                            {fut: u for fut, u in pending_futures.items()}
-                    ) if pending_futures else []:
+                    # FIX: Iterate only over the futures, then look up the URL
+                    for f in concurrent.futures.as_completed(pending_futures):
+                        url = pending_futures[f]
                         try:
                             if f.result():
                                 with dl_lock:
@@ -190,16 +190,6 @@ def run_simultaneous(probe_list, probe_jobs, download_jobs):
 def build_probe_list(syllabus, years, seasons, paper_numbers, include_ms, include_gt, file_structure):
     """
     Build the list of (url, save_path) pairs to probe.
-
-    URL structure (same for ALL years — the download endpoint only needs the
-    bare filename, so there are no year-based naming exceptions here):
-
-        <DOWNLOAD_BASE>/<syllabus>_<season_char><year_short>_<type>_<paper><variant>.pdf
-
-    Season folder names used for the local directory tree:
-        s -> May-June
-        w -> Oct-Nov
-        m -> March
     """
     probe_list = []
 
