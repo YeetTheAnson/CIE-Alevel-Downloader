@@ -1,0 +1,838 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>CIE Paper Fetcher</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;700&family=Syne:wght@400;600;700;800&display=swap" rel="stylesheet">
+<style>
+:root {
+  --bg:       #09090f;
+  --surface:  #0f0f18;
+  --card:     #13131e;
+  --card2:    #171724;
+  --border:   #21213a;
+  --border2:  #2e2e50;
+  --accent:   #7c6af7;
+  --accent2:  #a78bfa;
+  --accent3:  #c4b5fd;
+  --green:    #34d399;
+  --green2:   #059669;
+  --red:      #f87171;
+  --yellow:   #fbbf24;
+  --text:     #eaeaf6;
+  --muted:    #6464a0;
+  --muted2:   #3a3a60;
+  --mono: 'JetBrains Mono', monospace;
+  --sans: 'Syne', sans-serif;
+  --r: 12px;
+}
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+html { scroll-behavior: smooth; }
+body {
+  background: var(--bg); color: var(--text);
+  font-family: var(--sans); min-height: 100vh; overflow-x: hidden;
+}
+body::before {
+  content: ''; position: fixed; inset: 0; z-index: 0; pointer-events: none;
+  background-image:
+    linear-gradient(rgba(124,106,247,.032) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(124,106,247,.032) 1px, transparent 1px);
+  background-size: 44px 44px;
+}
+.orb { position: fixed; border-radius: 50%; filter: blur(130px); pointer-events: none; z-index: 0; }
+.orb-a { width: 550px; height: 550px; background: rgba(124,106,247,.1); top:-180px; right:-120px; }
+.orb-b { width: 420px; height: 420px; background: rgba(52,211,153,.065); bottom:-100px; left:-80px; }
+
+/* ── Layout ── */
+.shell {
+  position: relative; z-index: 1;
+  max-width: 900px; margin: 0 auto;
+  padding: 44px 24px 80px;
+  display: grid;
+  grid-template-columns: 1fr 320px;
+  grid-template-rows: auto;
+  column-gap: 18px;
+  align-items: start;
+}
+.header    { grid-column: 1 / -1; margin-bottom: 30px; }
+.left-col  { grid-column: 1; }
+.right-col { grid-column: 2; position: sticky; top: 24px; }
+footer     { grid-column: 1 / -1; text-align: center; padding-top: 28px;
+             font-family: var(--mono); font-size: 10px; color: var(--muted2); }
+
+/* ── Header ── */
+.logo-row { display: flex; align-items: center; gap: 14px; margin-bottom: 8px; }
+.logo-icon {
+  width: 42px; height: 42px; border-radius: 11px; flex-shrink: 0;
+  background: linear-gradient(135deg, #7c6af7, #a78bfa);
+  display: grid; place-items: center; font-size: 21px;
+  box-shadow: 0 0 28px rgba(124,106,247,.45);
+}
+h1 {
+  font-size: clamp(22px, 4vw, 34px); font-weight: 800; letter-spacing: -1px;
+  background: linear-gradient(120deg, #fff 30%, var(--accent3));
+  -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text;
+}
+.tagline { font-family: var(--mono); font-size: 12px; color: var(--muted); letter-spacing: .4px; }
+.tagline span { color: var(--accent2); }
+
+/* ── Card ── */
+.card {
+  background: var(--card); border: 1px solid var(--border);
+  border-radius: var(--r); padding: 20px 22px; margin-bottom: 14px;
+  transition: border-color .2s;
+}
+.card:focus-within { border-color: var(--border2); }
+.sec-lbl {
+  font-family: var(--mono); font-size: 10px; font-weight: 700;
+  letter-spacing: 2.5px; text-transform: uppercase; color: var(--muted);
+  margin-bottom: 14px; display: flex; align-items: center; gap: 8px;
+}
+.sec-lbl::before {
+  content: ''; display: block; width: 3px; height: 13px;
+  background: var(--accent); border-radius: 2px; flex-shrink: 0;
+}
+
+/* ── Inputs ── */
+.irow { display: flex; gap: 10px; flex-wrap: wrap; }
+.ig { display: flex; flex-direction: column; gap: 5px; flex: 1; min-width: 110px; }
+.ig label { font-family: var(--mono); font-size: 10px; color: var(--muted); letter-spacing: .5px; }
+.ig input, .ig select {
+  background: var(--surface); border: 1px solid var(--border); border-radius: 8px;
+  color: var(--text); font-family: var(--mono); font-size: 14px; padding: 9px 12px;
+  outline: none; width: 100%; transition: border-color .2s, box-shadow .2s;
+}
+.ig input:focus, .ig select:focus {
+  border-color: var(--accent); box-shadow: 0 0 0 3px rgba(124,106,247,.13);
+}
+.ig input::placeholder { color: var(--muted2); }
+.ig select option { background: var(--surface); }
+
+/* ── Pills ── */
+.pills { display: flex; flex-wrap: wrap; gap: 7px; }
+.pill {
+  display: flex; align-items: center; gap: 7px;
+  background: var(--surface); border: 1px solid var(--border); border-radius: 8px;
+  padding: 8px 13px; cursor: pointer; user-select: none;
+  font-family: var(--mono); font-size: 11px; font-weight: 500; color: var(--muted);
+  transition: all .17s;
+}
+.pill:hover { border-color: var(--border2); color: var(--text); }
+.pill.on { background: #201a50; border-color: var(--accent); color: var(--accent3); }
+.pill .dot {
+  width: 6px; height: 6px; border-radius: 50%;
+  background: var(--muted2); transition: background .17s; flex-shrink: 0;
+}
+.pill.on .dot { background: var(--accent); box-shadow: 0 0 5px var(--accent); }
+
+/* ── Paper grid ── */
+.pgrid { display: grid; grid-template-columns: repeat(9, 1fr); gap: 6px; }
+.pb {
+  background: var(--surface); border: 1px solid var(--border); border-radius: 7px;
+  padding: 9px 4px; cursor: pointer; user-select: none;
+  font-family: var(--mono); font-size: 12px; font-weight: 700;
+  color: var(--muted); text-align: center; transition: all .17s;
+}
+.pb:hover { border-color: var(--border2); color: var(--text); }
+.pb.on { background: #201a50; border-color: var(--accent); color: var(--accent3); }
+.prow-sub { display: flex; align-items: center; justify-content: space-between; margin-top: 10px; }
+.plbl { font-family: var(--mono); font-size: 10px; color: var(--muted2); }
+.text-btn {
+  background: none; border: 1px dashed var(--border2); border-radius: 6px;
+  padding: 4px 11px; font-family: var(--mono); font-size: 10px;
+  color: var(--muted); cursor: pointer; transition: all .17s;
+}
+.text-btn:hover { color: var(--accent2); border-color: var(--accent); }
+
+/* ── Flags ── */
+.flags { display: flex; flex-wrap: wrap; gap: 7px; }
+.fb {
+  display: flex; align-items: center; gap: 8px;
+  background: var(--surface); border: 1px solid var(--border); border-radius: 8px;
+  padding: 9px 15px; cursor: pointer; user-select: none;
+  font-family: var(--mono); font-size: 11px; color: var(--muted); transition: all .17s;
+}
+.fb:hover { border-color: var(--border2); color: var(--text); }
+.fb.on { background: #201a50; border-color: var(--accent); color: var(--accent3); }
+.fb .tag {
+  font-size: 10px; font-weight: 700; padding: 2px 6px; border-radius: 4px;
+  background: rgba(124,106,247,.15); color: var(--accent2);
+}
+.fb.on .tag { background: rgba(124,106,247,.3); }
+
+/* ── Workers ── */
+.wrow { display: flex; gap: 12px; flex-wrap: wrap; }
+.wg { display: flex; flex-direction: column; gap: 5px; flex: 1; min-width: 150px; }
+.wg label {
+  font-family: var(--mono); font-size: 10px; color: var(--muted);
+  letter-spacing: .5px; display: flex; align-items: center; gap: 6px;
+}
+.rec { font-size: 9px; color: var(--green); background: rgba(52,211,153,.1);
+  border: 1px solid rgba(52,211,153,.2); border-radius: 3px; padding: 1px 5px; }
+.wctrl { display: flex; }
+.wctrl input[type=number] {
+  background: var(--surface); border: 1px solid var(--border);
+  border-left: none; border-right: none;
+  color: var(--text); font-family: var(--mono); font-size: 16px; font-weight: 700;
+  padding: 9px 10px; width: 64px; text-align: center; outline: none;
+  -moz-appearance: textfield; transition: border-color .2s;
+}
+.wctrl input[type=number]::-webkit-inner-spin-button { display: none; }
+.wctrl input:focus { border-color: var(--accent); }
+.wctrl button {
+  background: var(--surface); border: 1px solid var(--border);
+  color: var(--muted); font-size: 17px; width: 36px; height: 42px;
+  cursor: pointer; transition: all .15s; display: grid; place-items: center;
+}
+.wctrl button:first-child { border-radius: 7px 0 0 7px; }
+.wctrl button:last-child  { border-radius: 0 7px 7px 0; }
+.wctrl button:hover { background: var(--card2); color: var(--accent2); }
+
+/* ── Simul toggle ── */
+.simul-row {
+  display: flex; align-items: center; gap: 13px;
+  background: var(--surface); border: 1px solid var(--border);
+  border-radius: 9px; padding: 13px 16px; cursor: pointer; user-select: none;
+  transition: border-color .2s; margin-top: 12px;
+}
+.simul-row:hover { border-color: var(--border2); }
+.simul-row.on { border-color: var(--accent); background: #151030; }
+.tog-track {
+  width: 38px; height: 21px; border-radius: 11px;
+  background: var(--border); position: relative; transition: background .2s; flex-shrink: 0;
+}
+.simul-row.on .tog-track { background: var(--accent); }
+.tog-thumb {
+  position: absolute; top: 2.5px; left: 2.5px;
+  width: 16px; height: 16px; background: #fff; border-radius: 50%;
+  transition: transform .2s; box-shadow: 0 1px 4px rgba(0,0,0,.5);
+}
+.simul-row.on .tog-thumb { transform: translateX(17px); }
+.simul-text strong { display: block; font-size: 12px; font-weight: 700; color: var(--text); margin-bottom: 1px; }
+.simul-text small  { font-family: var(--mono); font-size: 10px; color: var(--muted); }
+
+/* ── Summary card ── */
+.sum-card {
+  background: var(--card); border: 1px solid var(--border);
+  border-radius: var(--r); padding: 20px 22px; margin-bottom: 12px;
+}
+.sum-title {
+  font-family: var(--mono); font-size: 10px; font-weight: 700;
+  letter-spacing: 2px; text-transform: uppercase; color: var(--muted); margin-bottom: 14px;
+}
+.sgrid { display: flex; flex-direction: column; gap: 8px; }
+.srow  { display: flex; justify-content: space-between; align-items: baseline;
+         font-family: var(--mono); font-size: 11px; }
+.srow .sk { color: var(--muted); }
+.srow .sv { color: var(--text); font-weight: 700; }
+.srow .sv.ac { color: var(--accent2); }
+.srow .sv.big { font-size: 20px; color: var(--accent3); }
+.div { height: 1px; background: var(--border); margin: 8px 0; }
+
+/* ── Go + cancel Buttons ── */
+.btn-row { display: flex; gap: 8px; margin-bottom: 12px; }
+.go-btn {
+  flex: 1; padding: 16px;
+  background: linear-gradient(135deg, var(--accent) 0%, #9f7aea 100%);
+  border: none; border-radius: 10px;
+  color: #fff; font-family: var(--sans); font-size: 15px; font-weight: 800;
+  cursor: pointer; transition: all .2s; position: relative; overflow: hidden;
+  box-shadow: 0 4px 22px rgba(124,106,247,.38); letter-spacing: .3px;
+}
+.go-btn::after {
+  content: ''; position: absolute; inset: 0;
+  background: linear-gradient(135deg, rgba(255,255,255,.12), transparent);
+  opacity: 0; transition: opacity .2s;
+}
+.go-btn:hover::after { opacity: 1; }
+.go-btn:hover { transform: translateY(-1px); box-shadow: 0 8px 30px rgba(124,106,247,.52); }
+.go-btn:active { transform: translateY(0); }
+.go-btn:disabled {
+  background: var(--surface); color: var(--muted2);
+  cursor: not-allowed; box-shadow: none; transform: none;
+}
+.cancel-btn-icon {
+  display: none; width: 48px; flex-shrink: 0;
+  background: transparent; border: 1px solid var(--border2); border-radius: 10px;
+  color: var(--muted); font-size: 18px; font-weight: 800; cursor: pointer; transition: all .2s;
+  align-items: center; justify-content: center;
+}
+.cancel-btn-icon:hover { border-color: var(--red); color: var(--red); background: rgba(248,113,113,.05); }
+.cancel-btn-icon.vis { display: flex; }
+
+.err-box {
+  display: none; margin-bottom: 12px;
+  background: rgba(248,113,113,.07); border: 1px solid rgba(248,113,113,.22);
+  border-radius: 8px; padding: 11px 14px;
+  font-family: var(--mono); font-size: 11px; color: var(--red); line-height: 1.7;
+}
+.err-box.show { display: block; }
+
+/* ── Progress ── */
+.prog-card {
+  background: var(--card); border: 1px solid var(--border);
+  border-radius: var(--r); padding: 20px 22px; margin-bottom: 12px; display: none;
+}
+.prog-card.show { display: block; }
+.ph-lbl {
+  display: flex; justify-content: space-between; align-items: center;
+  font-family: var(--mono); font-size: 10px; color: var(--muted); margin-bottom: 6px;
+}
+.ph-lbl .ph-stat { color: var(--accent2); font-weight: 700; }
+.pw { background: var(--surface); border: 1px solid var(--border);
+      border-radius: 6px; height: 8px; overflow: hidden; margin-bottom: 14px; }
+.pb2 {
+  height: 100%; width: 0%; border-radius: 6px;
+  background: linear-gradient(90deg, var(--accent), var(--accent2));
+  transition: width .28s ease; position: relative; overflow: hidden;
+}
+.pb2.dl { background: linear-gradient(90deg, var(--green2), var(--green)); }
+.pb2::after {
+  content: ''; position: absolute; inset: 0;
+  background: linear-gradient(90deg, transparent, rgba(255,255,255,.28), transparent);
+  animation: sh 1.6s infinite;
+}
+@keyframes sh { from{transform:translateX(-100%)} to{transform:translateX(100%)} }
+
+/* ── Log ── */
+.log-card {
+  background: var(--card); border: 1px solid var(--border);
+  border-radius: var(--r); overflow: hidden; margin-top: 14px; display: none;
+}
+.log-card.show { display: block; }
+.log-hd {
+  padding: 9px 16px; border-bottom: 1px solid var(--border);
+  display: flex; justify-content: space-between; align-items: center;
+  font-family: var(--mono); font-size: 10px; color: var(--muted); letter-spacing: 1px;
+}
+.log-hd .cnt { color: var(--accent2); }
+.log-body {
+  max-height: 240px; overflow-y: auto;
+  padding: 10px 14px; font-family: var(--mono); font-size: 11px; line-height: 1.9; color: var(--muted);
+}
+.log-body::-webkit-scrollbar { width: 3px; }
+.log-body::-webkit-scrollbar-thumb { background: var(--border2); border-radius: 2px; }
+.le { display: flex; gap: 9px; }
+.le .ts { color: var(--muted2); flex-shrink: 0; }
+.le.found .msg { color: var(--green); }
+.le.error .msg { color: var(--red); }
+.le.info  .msg { color: var(--accent2); }
+.le.warn  .msg { color: var(--yellow); }
+.le.done  .msg { color: var(--text); font-weight: 700; }
+
+/* ── Result ── */
+.res-card {
+  display: none;
+  background: linear-gradient(135deg, #0d1f18, #0c1422);
+  border: 1px solid rgba(52,211,153,.28);
+  border-radius: var(--r); padding: 22px; text-align: center;
+}
+.res-card.show { display: block; }
+.res-card h3 { font-size: 18px; font-weight: 800; color: var(--green); margin-bottom: 5px; }
+.res-card p  { font-family: var(--mono); font-size: 11px; color: var(--muted);
+               margin-bottom: 18px; line-height: 1.7; }
+.folder-btn {
+  display: inline-flex; align-items: center; gap: 9px;
+  background: linear-gradient(135deg, var(--green2), var(--green));
+  color: #fff; border: none; border-radius: 9px; padding: 12px 24px;
+  font-family: var(--sans); font-size: 14px; font-weight: 800;
+  cursor: pointer; transition: all .2s;
+  box-shadow: 0 4px 18px rgba(52,211,153,.32);
+}
+.folder-btn:hover { transform: translateY(-1px); box-shadow: 0 8px 26px rgba(52,211,153,.45); }
+.path-note { margin-top: 10px; font-family: var(--mono); font-size: 10px;
+             color: var(--muted2); word-break: break-all; }
+
+@media (max-width: 680px) {
+  .shell { grid-template-columns: 1fr; padding: 28px 16px 60px; }
+  .right-col { position: static; }
+}
+</style>
+</head>
+<body>
+<div class="orb orb-a"></div>
+<div class="orb orb-b"></div>
+
+<div class="shell">
+
+  <!-- Header -->
+  <div class="header">
+    <div class="logo-row">
+      <div class="logo-icon">📄</div>
+      <h1>CIE Paper Fetcher</h1>
+    </div>
+    <p class="tagline">Cambridge A-Level past papers → <span>saved to CIE_OUT/</span></p>
+  </div>
+
+  <!-- ══════════ LEFT ══════════ -->
+  <div class="left-col">
+
+    <div class="card">
+      <div class="sec-lbl">Syllabus &amp; Years</div>
+      <div class="irow">
+        <div class="ig" style="max-width:120px">
+          <label>SYLLABUS CODE</label>
+          <input id="syllabus" type="text" placeholder="9231" maxlength="4" pattern="\d{4}">
+        </div>
+        <div class="ig" style="max-width:115px">
+          <label>START YEAR</label>
+          <input id="sy" type="number" placeholder="2018" min="1990" max="2099">
+        </div>
+        <div class="ig" style="max-width:115px">
+          <label>END YEAR</label>
+          <input id="ey" type="number" placeholder="2025" min="1990" max="2099">
+        </div>
+        <div class="ig">
+          <label>FOLDER STRUCTURE</label>
+          <select id="fs">
+            <option value="year_month_paper">Year → Session → Paper</option>
+            <option value="year_month">Year → Session (flat)</option>
+            <option value="month_year_paper">Session → Year → Paper</option>
+            <option value="month_year">Session → Year (flat)</option>
+          </select>
+        </div>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="sec-lbl">Exam Sessions</div>
+      <div class="pills">
+        <div class="pill on" data-season="s">
+          <span class="dot"></span>May–June<span style="color:var(--muted2);font-size:10px;margin-left:4px">(s)</span>
+        </div>
+        <div class="pill on" data-season="w">
+          <span class="dot"></span>Oct–Nov<span style="color:var(--muted2);font-size:10px;margin-left:4px">(w)</span>
+        </div>
+        <div class="pill" data-season="m">
+          <span class="dot"></span>Feb–Mar<span style="color:var(--muted2);font-size:10px;margin-left:4px">(m)</span>
+        </div>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="sec-lbl">Paper Numbers</div>
+      <div class="pgrid" id="pgrid"></div>
+      <div class="prow-sub">
+        <span class="plbl" id="plbl">4 selected</span>
+        <button class="text-btn" id="paper-all">Toggle all</button>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="sec-lbl">Components</div>
+      <div class="flags">
+        <div class="fb on" data-flag="qp"><span class="tag">QP</span>Question Papers</div>
+        <div class="fb" data-flag="ms"><span class="tag">MS</span>Mark Schemes</div>
+        <div class="fb" data-flag="gt"><span class="tag">GT</span>Grade Thresholds</div>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="sec-lbl">Performance</div>
+      <div class="wrow">
+        <div class="wg">
+          <label>PROBE WORKERS <span class="rec">rec: 16</span></label>
+          <div class="wctrl">
+            <button onclick="nudge('p',-1)">−</button>
+            <input type="number" id="pj" value="16" min="1" max="64">
+            <button onclick="nudge('p',1)">+</button>
+          </div>
+        </div>
+        <div class="wg">
+          <label>DOWNLOAD WORKERS <span class="rec">rec: 8</span></label>
+          <div class="wctrl">
+            <button onclick="nudge('d',-1)">−</button>
+            <input type="number" id="dj" value="8" min="1" max="32">
+            <button onclick="nudge('d',1)">+</button>
+          </div>
+        </div>
+      </div>
+      <div class="simul-row on" id="simul">
+        <div class="tog-track"><div class="tog-thumb"></div></div>
+        <div class="simul-text">
+          <strong>Simultaneous mode</strong>
+          <small>Download files immediately as probes confirm them</small>
+        </div>
+      </div>
+    </div>
+
+    <!-- Log is placed inside left-col so it matches width perfectly and prevents sticky overlaps -->
+    <div class="log-card" id="log-card">
+      <div class="log-hd">
+        <span>ACTIVITY LOG</span>
+        <span class="cnt" id="log-cnt">0 entries</span>
+      </div>
+      <div class="log-body" id="log-body"></div>
+    </div>
+
+  </div><!-- /left -->
+
+  <!-- ══════════ RIGHT ══════════ -->
+  <div class="right-col">
+
+    <div class="sum-card">
+      <div class="sum-title">Summary</div>
+      <div class="sgrid">
+        <div class="srow"><span class="sk">Syllabus</span><span class="sv ac" id="s-syl">—</span></div>
+        <div class="srow"><span class="sk">Years</span><span class="sv ac" id="s-yr">—</span></div>
+        <div class="srow"><span class="sk">Sessions</span><span class="sv ac" id="s-ses">—</span></div>
+        <div class="srow"><span class="sk">Papers</span><span class="sv ac" id="s-pap">—</span></div>
+        <div class="srow"><span class="sk">Components</span><span class="sv ac" id="s-fl">—</span></div>
+        <div class="div"></div>
+        <div class="srow"><span class="sk">URLs to probe</span><span class="sv big" id="s-tot">0</span></div>
+      </div>
+    </div>
+
+    <!-- Prog-Card Moved below Sum-Card -->
+    <div class="prog-card" id="prog-card">
+      <div class="ph-lbl"><span>Probing</span><span class="ph-stat" id="p-stat">0 / 0 (0.0/s)</span></div>
+      <div class="pw"><div class="pb2" id="p-bar"></div></div>
+      <div class="ph-lbl"><span>Downloading</span><span class="ph-stat" id="d-stat">0 / 0 (0.0/s)</span></div>
+      <div class="pw"><div class="pb2 dl" id="d-bar"></div></div>
+    </div>
+
+    <div class="err-box" id="err-box"></div>
+
+    <!-- Buttons row with Flex container -->
+    <div class="btn-row">
+      <button class="go-btn" id="go-btn">⚡ Fetch Papers</button>
+      <button class="cancel-btn-icon" id="cancel-btn" title="Cancel job">✕</button>
+    </div>
+
+    <div class="res-card" id="res-card">
+      <h3 id="r-title">✓ Done!</h3>
+      <p id="r-body"></p>
+      <button class="folder-btn" id="folder-btn">📂 Open CIE_OUT folder</button>
+      <div class="path-note" id="r-path"></div>
+    </div>
+
+  </div><!-- /right -->
+
+  <footer>
+    pastpapers.papacambridge.com &nbsp;·&nbsp;
+    files saved to <code style="color:var(--accent2)">CIE_OUT/</code>
+  </footer>
+
+</div><!-- /shell -->
+
+<script>
+// ─────────────────────────────────────────────────────
+const SF = { s:'May-June', w:'Oct-Nov', m:'Feb-Mar' };
+let running  = false;
+let logCount = 0;
+let evtSrc   = null;
+let startTime = 0;
+
+// ── Paper buttons ──────────────────────────────────
+const pgrid = document.getElementById('pgrid');
+for (let i = 1; i <= 9; i++) {
+  const b = document.createElement('button');
+  b.className = 'pb' + (i <= 4 ? ' on' : '');
+  b.textContent = `P${i}`;
+  b.dataset.p = i;
+  b.addEventListener('click', () => { b.classList.toggle('on'); sync(); });
+  pgrid.appendChild(b);
+}
+document.getElementById('paper-all').addEventListener('click', () => {
+  const bs = [...pgrid.querySelectorAll('.pb')];
+  const all = bs.every(b => b.classList.contains('on'));
+  bs.forEach(b => b.classList[all ? 'remove' : 'add']('on'));
+  sync();
+});
+
+// ── Season pills ───────────────────────────────────
+document.querySelectorAll('.pill[data-season]').forEach(p =>
+  p.addEventListener('click', () => { p.classList.toggle('on'); sync(); }));
+
+// ── Flag buttons ───────────────────────────────────
+document.querySelectorAll('.fb').forEach(b => {
+  b.addEventListener('click', () => {
+    if (b.dataset.flag === 'qp' && b.classList.contains('on')) {
+      const others = [...document.querySelectorAll('.fb')].filter(x => x !== b && x.classList.contains('on'));
+      if (!others.length) return;
+    }
+    b.classList.toggle('on');
+    sync();
+  });
+});
+
+// ── Simul toggle ───────────────────────────────────
+document.getElementById('simul').addEventListener('click', function() {
+  this.classList.toggle('on');
+});
+
+// ── Worker nudge ───────────────────────────────────
+function nudge(w, d) {
+  const el = document.getElementById(w === 'p' ? 'pj' : 'dj');
+  el.value = Math.min(+el.max, Math.max(+el.min, +el.value + d));
+}
+
+// ── Year smart-fill ────────────────────────────────
+document.getElementById('sy').addEventListener('blur', () => {
+  const sy = document.getElementById('sy'), ey = document.getElementById('ey');
+  if (sy.value && !ey.value) ey.value = sy.value;
+  sync();
+});
+document.getElementById('ey').addEventListener('blur', () => {
+  const sy = +document.getElementById('sy').value;
+  const ey = +document.getElementById('ey').value;
+  if (ey && sy && ey < sy) document.getElementById('ey').value = sy;
+  sync();
+});
+
+// ── Config + probe count ───────────────────────────
+function getCfg() {
+  const syllabus = document.getElementById('syllabus').value.trim();
+  const sy       = parseInt(document.getElementById('sy').value) || 0;
+  const ey       = parseInt(document.getElementById('ey').value) || sy;
+  const seasons  = [...document.querySelectorAll('.pill[data-season].on')].map(p => p.dataset.season);
+  const papers   = [...document.querySelectorAll('.pb.on')].map(b => b.dataset.p);
+  const flags    = [...document.querySelectorAll('.fb.on')].map(b => b.dataset.flag);
+  const fs       = document.getElementById('fs').value;
+  const simul    = document.getElementById('simul').classList.contains('on');
+  const pj       = Math.max(1, +document.getElementById('pj').value || 16);
+  const dj       = Math.max(1, +document.getElementById('dj').value || 8);
+  return { syllabus, sy, ey, seasons, papers, flags, fs, simul, pj, dj };
+}
+
+function countProbes(cfg) {
+  if (!cfg.syllabus || !cfg.sy) return 0;
+  let n = 0;
+  const years = cfg.ey - cfg.sy + 1;
+  for (let y = 0; y < years; y++) {
+    for (const s of cfg.seasons) {
+      if (cfg.flags.includes('gt')) n++;
+      for (const p of cfg.papers) {
+        for (let v = 1; v <= 9; v++) {
+          if (cfg.flags.includes('qp')) n++;
+          if (cfg.flags.includes('ms')) n++;
+        }
+      }
+    }
+  }
+  return n;
+}
+
+function sync() {
+  const cfg = getCfg();
+  const tot = countProbes(cfg);
+  document.getElementById('s-syl').textContent = cfg.syllabus || '—';
+  document.getElementById('s-yr').textContent  = cfg.sy
+    ? (cfg.ey !== cfg.sy ? `${cfg.sy} – ${cfg.ey}` : String(cfg.sy)) : '—';
+  document.getElementById('s-ses').textContent = cfg.seasons.length
+    ? cfg.seasons.map(s => SF[s]).join(', ') : '—';
+  document.getElementById('s-pap').textContent = cfg.papers.length
+    ? cfg.papers.map(p => `P${p}`).join(' ') : '—';
+  document.getElementById('s-fl').textContent  = cfg.flags.length
+    ? cfg.flags.map(f => f.toUpperCase()).join(' + ') : '—';
+  document.getElementById('s-tot').textContent = tot.toLocaleString();
+  const pc = cfg.papers.length;
+  document.getElementById('plbl').textContent  =
+    pc === 0 ? 'none' : pc === 9 ? 'all 9' : `${pc} selected`;
+}
+
+['syllabus','sy','ey','fs'].forEach(id =>
+  document.getElementById(id).addEventListener('input', sync));
+sync();
+
+// ── SSE stream ─────────────────────────────────────
+function openSSE() {
+  if (evtSrc) { evtSrc.close(); evtSrc = null; }
+  evtSrc = new EventSource('/events');
+  evtSrc.onmessage = onEvent;
+  evtSrc.onerror   = () => {
+    if (running) addLog('Connection interrupted — retrying…', 'warn');
+  };
+}
+
+function onEvent(e) {
+  let ev; try { ev = JSON.parse(e.data); } catch { return; }
+  switch (ev.type) {
+    case 'heartbeat': break;
+    case 'start':
+      startTime = Date.now();
+      setP(0, ev.probe_total, 0, 0);
+      addLog(`Job started — ${ev.probe_total.toLocaleString()} URLs`, 'info');
+      addLog(`${ev.syllabus} · ${ev.sy}–${ev.ey} · ${ev.seasons.map(s=>SF[s]).join(', ')}`, 'info');
+      break;
+    case 'probe':
+      setP(ev.done, ev.total, null, null);
+      break;
+    case 'dl_found':
+      setP(null, null, ev.done, ev.total);
+      break;
+    case 'dl_done':
+      setP(null, null, ev.done, ev.total);
+      break;
+    case 'log':
+      addLog(ev.msg, ev.level || 'info');
+      break;
+    case 'done':
+      finish(false, ev.downloaded, ev.found, ev.output_dir);
+      break;
+    case 'cancelled':
+      addLog(ev.msg, 'warn');
+      finish(true, 0, 0, ev.output_dir);
+      break;
+    case 'error':
+      showErr(ev.msg);
+      finish(true, 0, 0, '');
+      break;
+  }
+}
+
+// ── Go button ──────────────────────────────────────
+document.getElementById('go-btn').addEventListener('click', async () => {
+  const cfg = getCfg();
+  if (!cfg.syllabus || !/^\d{4}$/.test(cfg.syllabus)) return showErr('Enter a valid 4-digit syllabus code.');
+  if (!cfg.sy || cfg.sy < 1990) return showErr('Enter a valid start year.');
+  if (cfg.ey < cfg.sy)          return showErr('End year must be ≥ start year.');
+  if (!cfg.seasons.length)      return showErr('Select at least one session.');
+  if (!cfg.papers.length)       return showErr('Select at least one paper number.');
+  if (!cfg.flags.length)        return showErr('Select at least one component.');
+
+  hideErr(); resetUI(); running = true;
+  document.getElementById('go-btn').disabled = true;
+  document.getElementById('cancel-btn').classList.add('vis');
+  document.getElementById('prog-card').classList.add('show');
+  document.getElementById('log-card').classList.add('show');
+  document.getElementById('res-card').classList.remove('show');
+
+  openSSE(); 
+
+  try {
+    const res = await fetch('/run', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        syllabus:       cfg.syllabus,
+        start_year:     cfg.sy,
+        end_year:       cfg.ey,
+        seasons:        cfg.seasons,
+        papers:         cfg.papers,
+        file_structure: cfg.fs,
+        simul:          cfg.simul,
+        probe_jobs:     cfg.pj,
+        dl_jobs:        cfg.dj,
+        ms:             cfg.flags.includes('ms'),
+        gt:             cfg.flags.includes('gt'),
+      }),
+    });
+    const data = await res.json();
+    if (!res.ok) { showErr(data.error || 'Server error.'); finish(true, 0, 0, ''); }
+  } catch {
+    showErr('Could not reach server. Is cie_downloader.py --ui running?');
+    finish(true, 0, 0, '');
+  }
+});
+
+// ── Cancel ─────────────────────────────────────────
+document.getElementById('cancel-btn').addEventListener('click', async () => {
+  document.getElementById('cancel-btn').innerHTML = '⏳';
+  try { await fetch('/cancel', { method: 'POST' }); } catch {}
+});
+
+// ── Open folder ────────────────────────────────────
+document.getElementById('folder-btn').addEventListener('click', async () => {
+  try { await fetch('/open_folder', { method: 'POST' }); } catch {}
+});
+
+// ── Helpers ────────────────────────────────────────
+function getRate(count, elapsedMs) {
+  if (!count) return "0.0";
+  const secs = Math.max(elapsedMs / 1000, 0.5); 
+  return (count / secs).toFixed(1);
+}
+
+function setP(pd, pt, dd, dt) {
+  const el = Date.now() - startTime;
+  
+  if (pd !== null && pt !== null) {
+    document.getElementById('p-bar').style.width = pt > 0 ? (pd/pt*100).toFixed(1)+'%' : '0%';
+    document.getElementById('p-stat').textContent = `${(pd||0).toLocaleString()} / ${(pt||0).toLocaleString()} (${getRate(pd, el)}/s)`;
+  }
+  if (dd !== null && dt !== null) {
+    document.getElementById('d-bar').style.width = dt > 0 ? (dd/dt*100).toFixed(1)+'%' : '0%';
+    document.getElementById('d-stat').textContent = `${(dd||0).toLocaleString()} / ${(dt||0).toLocaleString()} (${getRate(dd, el)}/s)`;
+  }
+}
+
+function addLog(msg, type='info') {
+  const now = new Date();
+  const ts  = `${h2(now.getHours())}:${h2(now.getMinutes())}:${h2(now.getSeconds())}`;
+  const bd  = document.getElementById('log-body');
+  const div = document.createElement('div');
+  div.className = `le ${type}`;
+  div.innerHTML = `<span class="ts">${ts}</span><span class="msg">${esc(msg)}</span>`;
+  bd.appendChild(div);
+  bd.scrollTop = bd.scrollHeight;
+  document.getElementById('log-cnt').textContent = `${++logCount} entries`;
+}
+
+function h2(n) { return String(n).padStart(2,'0'); }
+function esc(s) {
+  return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+}
+
+function showErr(msg) {
+  const el = document.getElementById('err-box');
+  el.textContent = '⚠ ' + msg; el.classList.add('show');
+}
+function hideErr() { document.getElementById('err-box').classList.remove('show'); }
+
+function finish(cancelled, dl, found, dir) {
+  running = false;
+  document.getElementById('go-btn').disabled = false;
+  document.getElementById('cancel-btn').classList.remove('vis');
+  document.getElementById('cancel-btn').innerHTML = '✕';
+  if (evtSrc) { evtSrc.close(); evtSrc = null; }
+
+  if (!cancelled) {
+    const rc = document.getElementById('res-card');
+    rc.classList.add('show');
+    document.getElementById('r-title').textContent =
+      dl === 0 ? '✓ Up to date' : `✓ ${dl} file${dl !== 1 ? 's' : ''} downloaded`;
+    document.getElementById('r-body').textContent = dl === 0
+      ? 'All matching files already exist in CIE_OUT — nothing new to download.'
+      : `Found ${found} new file${found!==1?'s':''}, downloaded ${dl} successfully.`;
+    document.getElementById('r-path').textContent = dir || '';
+    addLog(`Job complete — ${dl} downloaded, ${found} found.`, 'done');
+  }
+}
+
+function resetUI() {
+  logCount = 0;
+  startTime = Date.now();
+  document.getElementById('log-body').innerHTML = '';
+  document.getElementById('log-cnt').textContent = '0 entries';
+  document.getElementById('p-bar').style.width = '0%';
+  document.getElementById('d-bar').style.width = '0%';
+  document.getElementById('p-stat').textContent = '0 / 0 (0.0/s)';
+  document.getElementById('d-stat').textContent = '0 / 0 (0.0/s)';
+  document.getElementById('res-card').classList.remove('show');
+  hideErr();
+}
+
+// ── Reconnect to running job on page reload ────────
+(async () => {
+  try {
+    const r = await fetch('/status');
+    const s = await r.json();
+    if (s.running) {
+      running = true;
+      startTime = Date.now() - (s.elapsed * 1000); 
+      document.getElementById('go-btn').disabled = true;
+      document.getElementById('cancel-btn').classList.add('vis');
+      document.getElementById('prog-card').classList.add('show');
+      document.getElementById('log-card').classList.add('show');
+      setP(s.probe_done, s.probe_total, s.dl_done, s.dl_total);
+      addLog('Reconnected to running job…', 'info');
+      openSSE();
+    }
+  } catch {}
+})();
+</script>
+</body>
+</html>
